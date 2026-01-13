@@ -1,88 +1,78 @@
 import streamlit as st
-import os
-# On importe la librairie officielle en secours pour valider la clé si besoin
-import google.generativeai as genai 
-from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.messages import HumanMessage, SystemMessage
 
-# CONFIGURATION PAGE
+# --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Mon Agent Actu", page_icon="🗞️")
-st.title("🗞️ Mon Expert Actualité")
+st.title("🗞️ Mon Expert Actualité (Mode Direct)")
 
-# RECUPERATION CLES
+# Récupération sécurisée des clés
 try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
-except:
-    st.error("Clés introuvables. Vérifie les secrets.")
-    st.stop()
-
-# --- DIAGNOSTIC AUTOMATIQUE ---
-# Ce petit bout de code va vérifier silencieusement si la clé fonctionne
-try:
-    genai.configure(api_key=GOOGLE_API_KEY)
-    # On teste juste si on arrive à lister les modèles
-    list(genai.list_models())
+    api_key_google = st.secrets["GOOGLE_API_KEY"]
+    api_key_tavily = st.secrets["TAVILY_API_KEY"]
+    
+    # Configuration DIRECTE de Google (plus fiable)
+    genai.configure(api_key=api_key_google)
 except Exception as e:
-    st.error(f"❌ Problème critique avec la clé Google : {e}")
+    st.error(f"Erreur de clés : {e}")
     st.stop()
-# -----------------------------
 
-# FONCTION PRINCIPALE
-def ask_agent(user_message):
-    # On utilise le modèle Flash qui est rapide et gratuit
-    # Si ça plante encore, on essaiera "gemini-1.0-pro"
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash", 
-        google_api_key=GOOGLE_API_KEY,
-        convert_system_message_to_human=True # Astuce pour éviter certains bugs
-    )
-    
-    search_tool = TavilySearchResults(tavily_api_key=TAVILY_API_KEY, k=3)
-    
+# --- 2. FONCTION INTELLIGENTE ---
+def ask_agent_direct(user_input):
+    # Etape A : Recherche Web
     context_web = ""
-    if "actu" in user_message.lower() or "news" in user_message.lower():
-        with st.status("🔍 Recherche en cours...", expanded=True) as status:
-            try:
-                raw_results = search_tool.invoke(user_message)
-                context_web = f"\nINFOS WEB : {raw_results}"
-                status.update(label="Trouvé !", state="complete", expanded=False)
-            except:
-                st.warning("Recherche web impossible.")
+    if "actu" in user_input.lower() or "news" in user_input.lower() or "récent" in user_input.lower():
+        status_box = st.status("🔍 Recherche web en cours...", expanded=True)
+        try:
+            search = TavilySearchResults(tavily_api_key=api_key_tavily, k=3)
+            # On force la recherche
+            results = search.invoke(user_input)
+            context_web = f"\n\nSOURCES WEB RÉCENTES (A UTILISER POUR RÉPONDRE) :\n{results}\n"
+            status_box.update(label="✅ Infos trouvées !", state="complete", expanded=False)
+        except Exception as e:
+            status_box.update(label="❌ Recherche impossible", state="error")
+            st.error(f"Erreur Tavily: {e}")
 
-    messages = [
-        SystemMessage(content="Tu es un expert en actualité. Synthétise les infos."),
-        HumanMessage(content=user_message + context_web)
-    ]
-    
-    # Historique simplifié pour le test
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            messages.insert(1, HumanMessage(content=msg["content"]))
-        else:
-            messages.insert(2, SystemMessage(content=msg["content"]))
+    # Etape B : Génération de réponse (Mode Direct)
+    try:
+        # On essaie le modèle le plus standard
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Construction du prompt
+        full_prompt = f"""
+        Tu es un assistant expert en actualité. 
+        Utilise les informations suivantes pour répondre à la question de l'utilisateur.
+        Si tu n'as pas d'infos web, utilise tes connaissances.
+        
+        {context_web}
+        
+        QUESTION UTILISATEUR : {user_input}
+        """
+        
+        response = model.generate_content(full_prompt)
+        return response.text
+    except Exception as e:
+        return f"Erreur Gemini : {e}"
 
-    response = llm.invoke(messages)
-    return response.content
-
-# INTERFACE
+# --- 3. INTERFACE DE CHAT ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Affichage historique
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Quelle est l'actu ?"):
+# Zone de saisie
+if prompt := st.chat_input("Pose ta question d'actu..."):
+    # Affichage user
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Réponse assistant
     with st.chat_message("assistant"):
-        try:
-            response = ask_agent(prompt)
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-        except Exception as e:
-            st.error(f"Erreur : {e}")
+        reponse_text = ask_agent_direct(prompt)
+        st.markdown(reponse_text)
+    
+    st.session_state.messages.append({"role": "assistant", "content": reponse_text})
