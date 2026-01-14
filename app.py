@@ -5,12 +5,50 @@ import edge_tts
 import asyncio
 import io
 
-# --- 1. CONFIGURATION ---
-st.set_page_config(page_title="Assistant Actu Pro", page_icon="🎙️")
+# --- 1. CONFIGURATION VISUELLE (MODE APP) ---
+st.set_page_config(page_title="Morning Brief", page_icon="☀️", layout="centered")
+
+# CSS POUR CACHER LES MENUS ET STYLER COMME UNE APP
+st.markdown("""
+    <style>
+    /* Cache le menu hamburger en haut à droite */
+    #MainMenu {visibility: hidden;}
+    /* Cache le footer 'Made with Streamlit' */
+    footer {visibility: hidden;}
+    /* Cache la barre colorée en haut */
+    header {visibility: hidden;}
+    
+    /* Style des boutons pour le mobile (Gros et ronds) */
+    .stButton>button {
+        height: 80px;
+        width: 100%;
+        border-radius: 15px;
+        font-size: 24px;
+        font-weight: bold;
+        background-color: #f0f2f6;
+        border: 1px solid #d0d4d8;
+        color: #31333F;
+        transition: 0.3s;
+    }
+    
+    /* Effet au clic */
+    .stButton>button:active {
+        background-color: #ff4b4b;
+        color: white;
+        border: none;
+    }
+
+    /* Remonter le titre pour gagner de la place */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 0rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- 2. DÉFINITION DES PROFILS ---
 PROFILS = {
-    "🕵️‍♀️ MERIEM (Investigation)": """
+    "🕵️‍♀️ MERIEM": """
         CONTEXTE : Tu es l'assistant personnel d'intelligence économique de Meriem.
         TON AUDITEUR : Meriem veut aller au fond des choses. Elle veut des détails, des noms, des contextes.
         TES SOURCES : Mediapart, The Intercept, Al Jazeera, ONG, Rapports indépendants.
@@ -24,7 +62,7 @@ PROFILS = {
         TON : Posé, intellectuel, mais fluide.
     """,
     
-    "🚀 SACHA (Business/VC)": """
+    "🚀 SACHA": """
         CONTEXTE : Tu es l'analyste senior de Sacha.
         TON AUDITEUR : Sacha veut un rapport de marché pour prendre des décisions.
         TES SOURCES : Bloomberg, TechCrunch, Y Combinator, Les Echos.
@@ -42,7 +80,7 @@ PROFILS = {
 
 # --- 3. RÉGIONS ---
 REGIONS = [
-    "🌍 Monde Entier",
+    "🌍 Monde",
     "🇪🇺 Europe",
     "🇺🇸 Amériques",
     "🌍 Afrique",
@@ -59,34 +97,27 @@ except Exception as e:
     st.error(f"Erreur de clés : {e}")
     st.stop()
 
-# --- 5. FONCTION GÉNÉRATION AUDIO (VOIX HOMME UNIQUE) ---
+# --- 5. FONCTION AUDIO (Henri + Vitesse) ---
 async def generate_audio_edge(text, profil_nom):
-    # VOIX D'HOMME POUR TOUT LE MONDE (Henri)
     voice = "fr-FR-HenriNeural" 
-    
-    # ON GARDE LA VITESSE COMME MARQUEUR DE PERSONNALITÉ
     if "SACHA" in profil_nom:
-        rate = "+20%"  # Sacha = Très rapide
+        rate = "+40%"
     else:
-        rate = "+20%"  # Meriem = Rapide (mais moins que Sacha)
+        rate = "+25%"
 
     communicate = edge_tts.Communicate(text, voice, rate=rate)
-    
     out = io.BytesIO()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             out.write(chunk["data"])
-    
     out.seek(0)
     return out
 
-# Wrapper pour exécuter l'async dans Streamlit
 def get_audio(text, profil_nom):
     return asyncio.run(generate_audio_edge(text, profil_nom))
 
-# --- 6. FONCTION CERVEAU ---
+# --- 6. CERVEAU ---
 def ask_agent_radio(region, instructions_profil, nom_profil):
-    # A. Recherche Web
     status_container = st.empty()
     region_clean = region.split(" ")[1] if " " in region else region
     
@@ -95,17 +126,16 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
     else:
         keywords = "market trends venture capital startups tech finance data"
 
-    with status_container.status(f"📡 Analyse pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
+    with status_container.status(f"📡 Analyse ({region})...", expanded=True) as s:
         try:
             search = TavilySearchResults(tavily_api_key=api_key_tavily, k=7)
             query = f"top news {region_clean} {keywords} today detailed analysis"
             results = search.invoke(query)
             context_web = f"\n[DATA] :\n{results}\n"
-            s.update(label="✅ Données récupérées !", state="complete", expanded=False)
+            s.update(label="✅ Données OK", state="complete", expanded=False)
         except:
             s.update(label="❌ Erreur web", state="error")
 
-    # B. Rédaction Script
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
@@ -114,59 +144,57 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
         PROFIL : {instructions_profil}
         DONNÉES : {context_web}
         
-        CONSIGNE DE RÉDACTION :
-        - Rédige un texte DENSE (environ 600-800 mots).
-        - Style RADIO : Phrases courtes. Ponctuation forte.
-        - Pas de titres, pas de gras. Juste le texte à lire.
+        CONSIGNE : Rédige un texte DENSE (600-800 mots). Style RADIO.
         """
         response = model.generate_content(prompt)
         text_script = response.text
     except Exception as e:
         return f"Erreur IA : {e}", None
 
-    # C. Audio via Edge TTS
     try:
         audio_bytes = get_audio(text_script, nom_profil)
         return text_script, audio_bytes
     except Exception as e:
         return text_script, None
 
-# --- 7. INTERFACE ---
-# Gestion état
+# --- 7. INTERFACE APP ---
 if "step" not in st.session_state: st.session_state.step = 1 
 if "selected_profile" not in st.session_state: st.session_state.selected_profile = None
 if "selected_region" not in st.session_state: st.session_state.selected_region = None
 if "result_text" not in st.session_state: st.session_state.result_text = None
 if "result_audio" not in st.session_state: st.session_state.result_audio = None
 
-st.title("🎧 Mon Assistant Actu")
+# Titre minimaliste
+if st.session_state.step == 1:
+    st.markdown("<h1 style='text-align: center;'>☀️ Morning Brief</h1>", unsafe_allow_html=True)
+elif st.session_state.step == 2:
+    st.markdown(f"<h1 style='text-align: center;'>Bonjour {st.session_state.selected_profile.split(' ')[1]}</h1>", unsafe_allow_html=True)
+else:
+    st.markdown("<h1 style='text-align: center;'>🎙️ À l'écoute</h1>", unsafe_allow_html=True)
 
-# Retour
+# BOUTON RETOUR (Petit et discret en haut)
 if st.session_state.step > 1:
-    if st.button("⬅️ Retour", key="btn_ret"):
+    if st.button("↩️ Menu", key="btn_ret"):
         st.session_state.step = 1
         st.session_state.result_text = None
         st.session_state.result_audio = None
         st.rerun()
 
-# ÉTAPE 1
+# ÉTAPE 1 : PROFIL
 if st.session_state.step == 1:
-    st.subheader("Qui êtes-vous ?")
     keys = list(PROFILS.keys())
-    cols = st.columns(len(keys))
+    # Affichage vertical pour mobile (plus ergonomique)
     for i, key in enumerate(keys):
-        with cols[i]:
-            if st.button(key, use_container_width=True, key=f"p_{i}"):
-                st.session_state.selected_profile = key
-                st.session_state.step = 2
-                st.rerun()
+        st.write("") # Espace
+        if st.button(key, use_container_width=True, key=f"p_{i}"):
+            st.session_state.selected_profile = key
+            st.session_state.step = 2
+            st.rerun()
 
-# ÉTAPE 2
+# ÉTAPE 2 : RÉGION
 elif st.session_state.step == 2:
-    try: prenom = st.session_state.selected_profile.split(' ')[1]
-    except: prenom = "User"
-    st.subheader(f"Bonjour {prenom}, quelle zone ?")
-    cols = st.columns(2)
+    st.write("")
+    cols = st.columns(2) # Grille de 2 colonnes
     for i, r in enumerate(REGIONS):
         with cols[i%2]:
             if st.button(r, use_container_width=True, key=f"r_{i}"):
@@ -174,12 +202,10 @@ elif st.session_state.step == 2:
                 st.session_state.step = 3
                 st.rerun()
 
-# ÉTAPE 3
+# ÉTAPE 3 : LECTURE
 elif st.session_state.step == 3:
-    st.subheader("🎙️ Production du rapport...")
-    
     if st.session_state.result_text is None:
-        with st.spinner("Analyse des sources et synthèse vocale..."):
+        with st.spinner("Analyse et synthèse..."):
             p_blob = PROFILS[st.session_state.selected_profile]
             r_blob = st.session_state.selected_region
             txt, aud = ask_agent_radio(r_blob, p_blob, st.session_state.selected_profile)
@@ -188,8 +214,8 @@ elif st.session_state.step == 3:
             st.rerun()
             
     if st.session_state.result_audio:
+        # Lecteur audio large
         st.audio(st.session_state.result_audio, format='audio/mp3', start_time=0)
-        st.success("Lecture prête.")
         
-    with st.expander("📄 Script complet"):
+    with st.expander("Lire le texte"):
         st.write(st.session_state.result_text)
