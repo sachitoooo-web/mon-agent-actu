@@ -12,7 +12,7 @@ st.set_page_config(page_title="Assistant Actu Pro", page_icon="🎙️")
 PROFILS = {
     "🕵️‍♀️ MERIEM (Investigation)": """
         CONTEXTE : Tu es l'assistant personnel d'intelligence économique de Meriem.
-        TON AUDITRICE : Meriem veut aller au fond des choses. Elle veut des détails, des noms, des contextes.
+        TON AUDITEUR : Meriem veut aller au fond des choses. Elle veut des détails, des noms, des contextes.
         TES SOURCES : Mediapart, The Intercept, Al Jazeera, ONG, Rapports indépendants.
         
         STRUCTURE (FORMAT LONG) :
@@ -59,19 +59,19 @@ except Exception as e:
     st.error(f"Erreur de clés : {e}")
     st.stop()
 
-# --- 5. FONCTION GÉNÉRATION AUDIO (NOUVEAU MOTEUR) ---
+# --- 5. FONCTION GÉNÉRATION AUDIO (VOIX HOMME UNIQUE) ---
 async def generate_audio_edge(text, profil_nom):
-    # CHOIX DE LA VOIX ET VITESSE SELON LE PROFIL
+    # VOIX D'HOMME POUR TOUT LE MONDE (Henri)
+    voice = "fr-FR-HenriNeural" 
+    
+    # ON GARDE LA VITESSE COMME MARQUEUR DE PERSONNALITÉ
     if "SACHA" in profil_nom:
-        voice = "fr-FR-HenriNeural"  # Voix d'homme
-        rate = "+40%"                # Très rapide (x1.4 environ)
+        rate = "+40%"  # Sacha = Très rapide
     else:
-        voice = "fr-FR-DeniseNeural" # Voix de femme
-        rate = "+25%"                # Rapide mais posé (x1.25)
+        rate = "+25%"  # Meriem = Rapide (mais moins que Sacha)
 
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     
-    # On écrit l'audio en mémoire
     out = io.BytesIO()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -97,7 +97,6 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
 
     with status_container.status(f"📡 Analyse pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
         try:
-            # k=7 pour un bon équilibre rapidité/densité
             search = TavilySearchResults(tavily_api_key=api_key_tavily, k=7)
             query = f"top news {region_clean} {keywords} today detailed analysis"
             results = search.invoke(query)
@@ -110,7 +109,7 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
-        CONTEXTE : Tu es un assistant vocal.
+        CONTEXTE : Tu es un assistant vocal masculin.
         ZONE : {region}
         PROFIL : {instructions_profil}
         DONNÉES : {context_web}
@@ -180,7 +179,7 @@ elif st.session_state.step == 3:
     st.subheader("🎙️ Production du rapport...")
     
     if st.session_state.result_text is None:
-        with st.spinner("Analyse des sources et synthèse vocale haute définition..."):
+        with st.spinner("Analyse des sources et synthèse vocale..."):
             p_blob = PROFILS[st.session_state.selected_profile]
             r_blob = st.session_state.selected_region
             txt, aud = ask_agent_radio(r_blob, p_blob, st.session_state.selected_profile)
