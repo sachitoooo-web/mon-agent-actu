@@ -12,7 +12,6 @@ PROFILS = {
     "🕵️‍♀️ MERIEM (Investigation)": """
         CONTEXTE : Tu es l'assistant personnel d'intelligence économique de Meriem.
         TON AUDITRICE : Meriem cherche des infos alternatives, de l'investigation et du fond. Elle déteste le superficiel.
-        
         TES SOURCES : Mediapart, The Intercept, Al Jazeera, ONG, Rapports indépendants.
         
         STRUCTURE DE TON BRIEFING AUDIO :
@@ -27,7 +26,6 @@ PROFILS = {
     "🚀 SACHA (Business/VC)": """
         CONTEXTE : Tu es l'analyste junior de Sacha, un investisseur VC pressé.
         TON AUDITEUR : Sacha veut des signaux de marché, des chiffres, de la tech. Il veut savoir où investir.
-        
         TES SOURCES : Bloomberg, TechCrunch, Y Combinator, Les Echos.
         
         STRUCTURE DE TON BRIEFING AUDIO :
@@ -74,7 +72,6 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
     with status_container.status(f"📡 Recherche pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
         try:
             search = TavilySearchResults(tavily_api_key=api_key_tavily, k=5)
-            # Ajout de "today" pour forcer l'actu du jour
             query = f"top news {region_clean} {keywords} today latest details"
             results = search.invoke(query)
             context_web = f"\n[INFOS WEB] :\n{results}\n"
@@ -82,7 +79,7 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
         except:
             s.update(label="❌ Erreur web", state="error")
 
-    # B. Rédaction Script (Adressé à l'utilisateur)
+    # B. Rédaction Script
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
@@ -127,30 +124,71 @@ if "result_audio" not in st.session_state:
 # --- 7. INTERFACE ---
 st.title("🎧 Mon Assistant Actu")
 
-# RETOUR
+# BOUTON RETOUR (Toujours visible si étape > 1)
 if st.session_state.step > 1:
-    if st.button("⬅️ Retour"):
+    if st.button("⬅️ Retour au début", key="btn_retour"):
         st.session_state.step = 1
         st.session_state.result_text = None
         st.session_state.result_audio = None
         st.rerun()
 
-# ÉTAPE 1 : IDENTIFICATION (Correction ici pour afficher TOUS les profils)
+# ÉTAPE 1 : IDENTIFICATION
 if st.session_state.step == 1:
     st.subheader("Qui êtes-vous ?")
     
-    # On récupère les clés du dictionnaire
     keys = list(PROFILS.keys())
-    
-    # On crée dynamiquement les colonnes selon le nombre de profils
+    # Colonnes dynamiques
     cols = st.columns(len(keys))
     
     for i, key in enumerate(keys):
         with cols[i]:
-            # On affiche le bouton qui prend toute la largeur de sa colonne
-            if st.button(key, use_container_width=True):
+            # Clé unique indispensable pour éviter les bugs d'affichage
+            if st.button(key, use_container_width=True, key=f"profil_{i}"):
                 st.session_state.selected_profile = key
                 st.session_state.step = 2
                 st.rerun()
 
-# ÉTAPE 2 : ZONE D'INTÉR
+# ÉTAPE 2 : ZONE D'INTÉRÊT
+elif st.session_state.step == 2:
+    # Récupération sécurisée du prénom
+    try:
+        prenom_user = st.session_state.selected_profile.split(' ')[1]
+    except:
+        prenom_user = "Utilisateur"
+
+    st.subheader(f"Bonjour {prenom_user}, quelle zone t'intéresse ?")
+    
+    # Affichage des régions
+    cols_geo = st.columns(2)
+    for i, region in enumerate(REGIONS):
+        # On alterne les colonnes gauche/droite
+        col_actuelle = cols_geo[i % 2]
+        
+        with col_actuelle:
+            # Clé unique "geo_{i}" pour forcer l'affichage
+            if st.button(region, use_container_width=True, key=f"geo_{i}"):
+                st.session_state.selected_region = region
+                st.session_state.step = 3
+                st.rerun()
+
+# ÉTAPE 3 : BRIEFING
+elif st.session_state.step == 3:
+    st.subheader("🎙️ Briefing en cours...")
+    
+    if st.session_state.result_text is None:
+        with st.spinner("Je compile tes informations..."):
+            profil_blob = PROFILS[st.session_state.selected_profile]
+            region_blob = st.session_state.selected_region
+            
+            texte, audio = ask_agent_radio(region_blob, profil_blob, st.session_state.selected_profile)
+            
+            st.session_state.result_text = texte
+            st.session_state.result_audio = audio
+            st.rerun()
+    
+    if st.session_state.result_audio:
+        st.audio(st.session_state.result_audio, format='audio/mp3', start_time=0)
+        st.success("Briefing prêt.")
+    
+    with st.expander("📄 Lire le script"):
+        st.write(st.session_state.result_text)
