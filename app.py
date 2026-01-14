@@ -6,7 +6,7 @@ import asyncio
 import io
 
 # --- 1. CONFIGURATION VISUELLE (MODE APP) ---
-st.set_page_config(page_title="Morning Brief", page_icon="☀️", layout="centered")
+st.set_page_config(page_title="L'actu en bref", page_icon="📰", layout="centered")
 
 # CSS POUR CACHER LES MENUS ET STYLER COMME UNE APP
 st.markdown("""
