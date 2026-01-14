@@ -5,46 +5,48 @@ from gtts import gTTS
 import io
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="Podcast IA Actu", page_icon="🎙️")
+st.set_page_config(page_title="Mon Assistant Actu", page_icon="🎧")
 
-# --- 2. DÉFINITION DES PROFILS (Mode Script Radio) ---
+# --- 2. DÉFINITION DES PROFILS (Auditeurs) ---
 PROFILS = {
     "🕵️‍♀️ MERIEM (Investigation)": """
-        Tu es Meriem, une journaliste d'investigation indépendante.
-        Ta tâche : Rédiger un SCRIPT DE PODCAST RADIO de 3 minutes (environ 500 mots).
-        Ton ton : Engagé, sérieux mais accessible, direct.
-        Structure du script :
-        1. Intro : "Bonjour, ici Meriem pour votre revue de presse indépendante..."
-        2. Le gros dossier (Investigation/Géopolitique).
-        3. Le tour du monde rapide.
-        4. Outro : Une phrase de conclusion percutante.
+        CONTEXTE : Tu es l'assistant personnel d'intelligence économique de Meriem.
+        TON AUDITRICE : Meriem cherche des infos alternatives, de l'investigation et du fond. Elle déteste le superficiel.
         
-        Sources : Mediapart, The Intercept, Al Jazeera, etc.
-        Important : Ne lis pas les URL, cite juste les noms des journaux.
+        TES SOURCES : Mediapart, The Intercept, Al Jazeera, ONG, Rapports indépendants.
+        
+        STRUCTURE DE TON BRIEFING AUDIO :
+        1. SALUTATION : "Bonjour Meriem. Voici ta revue de presse investigation pour la zone [ZONE]."
+        2. LE DOSSIER DU JOUR : Raconte-lui une info "hors radar" ou un scandale géopolitique/écologique important.
+        3. LE POINT DE VUE : Synthétise un angle critique sur l'actu majeure.
+        4. CONCLUSION : "Voilà pour l'essentiel, Meriem. Bonne journée."
+        
+        TON : Calme, posé, très intellectuel et précis. Tu t'adresses directement à elle ("tu" ou "vous" selon ta préférence, reste cohérent).
     """,
     
     "🚀 SACHA (Business/VC)": """
-        Tu es Sacha, analyste VC à la Silicon Valley.
-        Ta tâche : Rédiger un SCRIPT DE PODCAST RADIO de 3 minutes (environ 500 mots).
-        Ton ton : Dynamique, rapide, "Business Class", professionnel.
-        Structure du script :
-        1. Intro : "Hello les makers, c'est Sacha pour le Market Update..."
-        2. Le signal fort (Tech/Bourse).
-        3. Les opportunités (Startups/Innovation).
-        4. Outro : "Stay hungry, à demain."
+        CONTEXTE : Tu es l'analyste junior de Sacha, un investisseur VC pressé.
+        TON AUDITEUR : Sacha veut des signaux de marché, des chiffres, de la tech. Il veut savoir où investir.
         
-        Sources : Bloomberg, TechCrunch, Financial Times.
-        Important : Ne lis pas les URL, cite juste les noms des journaux.
+        TES SOURCES : Bloomberg, TechCrunch, Y Combinator, Les Echos.
+        
+        STRUCTURE DE TON BRIEFING AUDIO :
+        1. SALUTATION : "Bonjour Sacha. Prêt pour le market update de la zone [ZONE] ? C'est parti."
+        2. LE MARKET MOVER : L'info qui fait bouger la bourse ou la tech aujourd'hui.
+        3. LA STARTUP / TECH : Une innovation ou une levée de fonds à noter.
+        4. CONCLUSION : "Fin du briefing Sacha. À plus tard."
+        
+        TON : Rapide, énergique, droit au but. Pas de phrases inutiles.
     """
 }
 
 # --- 3. DÉFINITION DES RÉGIONS ---
 REGIONS = [
-    "🌍 Monde Entier (Global)",
+    "🌍 Monde Entier",
     "🇪🇺 Europe",
-    "🇺🇸 Amériques (Nord/Sud)",
+    "🇺🇸 Amériques",
     "🌍 Afrique",
-    "🌏 Asie & Océanie",
+    "🌏 Asie",
     "🕌 Moyen-Orient"
 ]
 
@@ -57,51 +59,51 @@ except Exception as e:
     st.error(f"Erreur de clés : {e}")
     st.stop()
 
-# --- 5. FONCTION INTELLIGENTE (Texte + Audio) ---
-def ask_agent_podcast(region, instructions_profil, nom_profil):
+# --- 5. FONCTION INTELLIGENTE ---
+def ask_agent_radio(region, instructions_profil, nom_profil):
     # A. Recherche Web
     status_container = st.empty()
-    context_web = ""
+    region_clean = region.split(" ")[1] if " " in region else region
     
-    # On nettoie le nom de la région pour la recherche (enlève les emojis)
-    region_clean = region.split(" ")[1] 
-    
-    with status_container.status(f"🎧 Préparation du podcast ({region})...", expanded=True) as s:
-        try:
-            search = TavilySearchResults(tavily_api_key=api_key_tavily, k=6) # Plus de sources pour 3 min
-            # Requête optimisée avec la région
-            query = f"latest news {region_clean} investigation business technology today significant events"
-            results = search.invoke(query)
-            context_web = f"\n[SOURCES] :\n{results}\n"
-            s.update(label="✅ Infos collectées !", state="complete", expanded=False)
-        except:
-            s.update(label="❌ Recherche web difficile", state="error")
+    # Mots-clés contextuels
+    if "MERIEM" in nom_profil:
+        keywords = "investigation corruption human rights geopolitics independent news"
+    else:
+        keywords = "market trends venture capital startups tech finance news"
 
-    # B. Génération du Script (Texte)
+    with status_container.status(f"📡 Recherche pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
+        try:
+            search = TavilySearchResults(tavily_api_key=api_key_tavily, k=5)
+            query = f"top news {region_clean} {keywords} today latest details"
+            results = search.invoke(query)
+            context_web = f"\n[INFOS WEB] :\n{results}\n"
+            s.update(label="✅ Infos trouvées !", state="complete", expanded=False)
+        except:
+            s.update(label="❌ Erreur web", state="error")
+
+    # B. Rédaction Script (Adressé à l'utilisateur)
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
-        CONTEXTE : Tu es un présentateur de podcast.
-        ZONE GÉOGRAPHIQUE : {region}
+        CONTEXTE : Tu es un assistant vocal qui parle à son utilisateur.
+        ZONE : {region}
         
-        INSTRUCTIONS DE PERSONNALITÉ : 
+        TA MISSION ET TON UTILISATEUR : 
         {instructions_profil}
         
-        INFOS DU WEB À TRAITER : 
+        LES INFOS DU JOUR : 
         {context_web}
         
-        Rédige le script complet du podcast maintenant. Écris-le pour qu'il soit lu à l'oral (style fluide).
+        CONSIGNE TECHNIQUE : Rédige uniquement le texte parlé. Utilise la ponctuation pour rendre la lecture fluide.
         """
         response = model.generate_content(prompt)
         text_script = response.text
     except Exception as e:
         return f"Erreur IA : {e}", None
 
-    # C. Génération de l'Audio (TTS)
+    # C. Audio
     try:
-        # On utilise gTTS (Google Text-to-Speech)
         tts = gTTS(text=text_script, lang='fr', slow=False)
-        # On sauvegarde en mémoire (pas de fichier sur le disque)
         audio_bytes = io.BytesIO()
         tts.write_to_fp(audio_bytes)
         audio_bytes.seek(0)
@@ -109,9 +111,9 @@ def ask_agent_podcast(region, instructions_profil, nom_profil):
     except Exception as e:
         return text_script, None
 
-# --- 6. GESTION D'ÉTAT ---
+# --- 6. NAVIGATION ---
 if "step" not in st.session_state:
-    st.session_state.step = 1 # Etape 1: Profil, 2: Région, 3: Résultat
+    st.session_state.step = 1 
 if "selected_profile" not in st.session_state:
     st.session_state.selected_profile = None
 if "selected_region" not in st.session_state:
@@ -122,69 +124,23 @@ if "result_audio" not in st.session_state:
     st.session_state.result_audio = None
 
 # --- 7. INTERFACE ---
+st.title("🎧 Mon Assistant Actu")
 
-# BOUTON RETOUR (Si on n'est pas à l'étape 1)
+# RETOUR
 if st.session_state.step > 1:
-    if st.button("⬅️ Recommencer"):
+    if st.button("⬅️ Retour"):
         st.session_state.step = 1
         st.session_state.result_text = None
         st.session_state.result_audio = None
         st.rerun()
 
-# ÉTAPE 1 : CHOIX DU PROFIL
+# ÉTAPE 1 : IDENTIFICATION
 if st.session_state.step == 1:
-    st.title("🎙️ Choisissez votre Narrateur")
+    st.subheader("Qui êtes-vous ?")
     col1, col2 = st.columns(2)
     keys = list(PROFILS.keys())
     
     with col1:
         if st.button(keys[0], use_container_width=True):
             st.session_state.selected_profile = keys[0]
-            st.session_state.step = 2
-            st.rerun()
-    with col2:
-        if st.button(keys[1], use_container_width=True):
-            st.session_state.selected_profile = keys[1]
-            st.session_state.step = 2
-            st.rerun()
-
-# ÉTAPE 2 : CHOIX DE LA RÉGION
-elif st.session_state.step == 2:
-    nom_perso = st.session_state.selected_profile.split(' ')[1]
-    st.title(f"🌍 Quelle zone pour {nom_perso} ?")
-    
-    # Affichage des régions en grille de boutons
-    cols = st.columns(2)
-    for i, region in enumerate(REGIONS):
-        if cols[i % 2].button(region, use_container_width=True):
-            st.session_state.selected_region = region
-            st.session_state.step = 3
-            st.rerun()
-
-# ÉTAPE 3 : GÉNÉRATION ET LECTURE
-elif st.session_state.step == 3:
-    st.title("🎧 Votre Podcast est prêt")
-    
-    # Si on n'a pas encore généré, on le fait maintenant
-    if st.session_state.result_text is None:
-        with st.spinner("Fabrication du podcast (Rédaction + Enregistrement audio)..."):
-            profil_blob = PROFILS[st.session_state.selected_profile]
-            region_blob = st.session_state.selected_region
-            
-            texte, audio = ask_agent_podcast(region_blob, profil_blob, st.session_state.selected_profile)
-            
-            st.session_state.result_text = texte
-            st.session_state.result_audio = audio
-            st.rerun()
-    
-    # Affichage du lecteur audio
-    if st.session_state.result_audio:
-        st.success("Lecture disponible !")
-        st.audio(st.session_state.result_audio, format='audio/mp3', start_time=0)
-    
-    # Affichage du script (Optionnel, dans un accordéon pour pas gêner)
-    with st.expander("📖 Lire le script"):
-        st.markdown(st.session_state.result_text)
-
-    # Note de bas de page
-    st.info("💡 Note : La voix est générée synthétiquement par Google TTS (Gratuit).")
+            st
