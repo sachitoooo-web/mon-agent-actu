@@ -78,15 +78,17 @@ except Exception as e:
 def ask_agent(user_input, instructions_profil, nom_profil):
     # Recherche Web
     context_web = ""
-    status = st.status(f"⚡ Recherche des actus pour {nom_profil}...", expanded=True)
-    try:
-        search = TavilySearchResults(tavily_api_key=api_key_tavily, k=5)
-        # On ajoute le contexte temporel pour être sûr
-        results = search.invoke(f"{user_input} latest news details")
-        context_web = f"\n[SOURCES WEB] :\n{results}\n"
-        status.update(label="✅ Infos trouvées !", state="complete", expanded=False)
-    except:
-        status.update(label="❌ Pas d'infos web", state="error")
+    # On met le status dans un conteneur vide pour éviter les bugs d'affichage
+    status_container = st.empty()
+    with status_container.status(f"⚡ Recherche des actus pour {nom_profil}...", expanded=True) as s:
+        try:
+            search = TavilySearchResults(tavily_api_key=api_key_tavily, k=5)
+            # On force la date dans la requête pour avoir du frais
+            results = search.invoke(f"{user_input} latest news today")
+            context_web = f"\n[SOURCES WEB] :\n{results}\n"
+            s.update(label="✅ Infos trouvées !", state="complete", expanded=False)
+        except:
+            s.update(label="❌ Pas d'infos web", state="error")
     
     # Génération
     try:
@@ -118,20 +120,8 @@ if st.session_state.current_profile is None:
     st.title("🗞️ Qui veut la revue de presse ?")
     
     col1, col2 = st.columns(2)
-    
-    # On récupère les noms exacts des clés du dictionnaire
     keys = list(PROFILS.keys())
     
     # Bouton Meriem
     with col1:
-        if st.button(keys[0], use_container_width=True):
-            st.session_state.current_profile = keys[0]
-            st.session_state.auto_start = True
-            st.rerun()
-
-    # Bouton Sacha
-    with col2:
-        if st.button(keys[1], use_container_width=True):
-            st.session_state.current_profile = keys[1]
-            st.session_state.auto_start = True
-            st.rerun()
+        if st.button(keys
