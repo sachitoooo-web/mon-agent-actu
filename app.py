@@ -1,44 +1,46 @@
 import streamlit as st
 import google.generativeai as genai
 from langchain_community.tools.tavily_search import TavilySearchResults
-from gtts import gTTS
+import edge_tts
+import asyncio
 import io
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="Mon Assistant Actu", page_icon="🎧")
+st.set_page_config(page_title="Assistant Actu Pro", page_icon="🎙️")
 
 # --- 2. DÉFINITION DES PROFILS ---
 PROFILS = {
     "🕵️‍♀️ MERIEM (Investigation)": """
         CONTEXTE : Tu es l'assistant personnel d'intelligence économique de Meriem.
-        TON AUDITRICE : Meriem cherche des infos alternatives, de l'investigation et du fond. Elle déteste le superficiel.
+        TON AUDITRICE : Meriem veut aller au fond des choses. Elle veut des détails, des noms, des contextes.
         TES SOURCES : Mediapart, The Intercept, Al Jazeera, ONG, Rapports indépendants.
         
-        STRUCTURE DE TON BRIEFING AUDIO :
-        1. SALUTATION : "Bonjour Meriem. Voici ta revue de presse investigation pour la zone [ZONE]."
-        2. LE DOSSIER DU JOUR : Raconte-lui une info "hors radar" ou un scandale géopolitique/écologique important.
-        3. LE POINT DE VUE : Synthétise un angle critique sur l'actu majeure.
-        4. CONCLUSION : "Voilà pour l'essentiel, Meriem. Bonne journée."
+        STRUCTURE (FORMAT LONG) :
+        1. SALUTATION : "Bonjour Meriem. Analyse approfondie de la zone [ZONE]."
+        2. LE GRAND DOSSIER (Détaillé) : Le sujet complexe du jour. Causes, conséquences.
+        3. LE TOUR D'HORIZON : 3 autres actualités analysées critiquement.
+        4. CONCLUSION : "C'était ton analyse Meriem. À demain."
         
-        TON : Calme, posé, très intellectuel et précis. Tu t'adresses directement à elle.
+        TON : Posé, intellectuel, mais fluide.
     """,
     
     "🚀 SACHA (Business/VC)": """
-        CONTEXTE : Tu es l'analyste junior de Sacha, un investisseur VC pressé.
-        TON AUDITEUR : Sacha veut des signaux de marché, des chiffres, de la tech. Il veut savoir où investir.
+        CONTEXTE : Tu es l'analyste senior de Sacha.
+        TON AUDITEUR : Sacha veut un rapport de marché pour prendre des décisions.
         TES SOURCES : Bloomberg, TechCrunch, Y Combinator, Les Echos.
         
-        STRUCTURE DE TON BRIEFING AUDIO :
-        1. SALUTATION : "Bonjour Sacha. Prêt pour le market update de la zone [ZONE] ? C'est parti."
-        2. LE MARKET MOVER : L'info qui fait bouger la bourse ou la tech aujourd'hui.
-        3. LA STARTUP / TECH : Une innovation ou une levée de fonds à noter.
-        4. CONCLUSION : "Fin du briefing Sacha. À plus tard."
+        STRUCTURE (FORMAT LONG) :
+        1. SALUTATION : "Bonjour Sacha. Point marchés complet pour la zone [ZONE]."
+        2. MACRO & BOURSE : Chiffres précis, taux, inflation.
+        3. DEEP DIVE TECH : Une tendance (IA/Crypto) analysée en profondeur.
+        4. OPPORTUNITÉS : Les signaux faibles.
+        5. CONCLUSION : "Rapport terminé Sacha."
         
-        TON : Rapide, énergique, droit au but. Pas de phrases inutiles.
+        TON : Très rapide, percutant, orienté data.
     """
 }
 
-# --- 3. DÉFINITION DES RÉGIONS ---
+# --- 3. RÉGIONS ---
 REGIONS = [
     "🌍 Monde Entier",
     "🇪🇺 Europe",
@@ -57,25 +59,50 @@ except Exception as e:
     st.error(f"Erreur de clés : {e}")
     st.stop()
 
-# --- 5. FONCTION INTELLIGENTE ---
+# --- 5. FONCTION GÉNÉRATION AUDIO (NOUVEAU MOTEUR) ---
+async def generate_audio_edge(text, profil_nom):
+    # CHOIX DE LA VOIX ET VITESSE SELON LE PROFIL
+    if "SACHA" in profil_nom:
+        voice = "fr-FR-HenriNeural"  # Voix d'homme
+        rate = "+40%"                # Très rapide (x1.4 environ)
+    else:
+        voice = "fr-FR-DeniseNeural" # Voix de femme
+        rate = "+25%"                # Rapide mais posé (x1.25)
+
+    communicate = edge_tts.Communicate(text, voice, rate=rate)
+    
+    # On écrit l'audio en mémoire
+    out = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            out.write(chunk["data"])
+    
+    out.seek(0)
+    return out
+
+# Wrapper pour exécuter l'async dans Streamlit
+def get_audio(text, profil_nom):
+    return asyncio.run(generate_audio_edge(text, profil_nom))
+
+# --- 6. FONCTION CERVEAU ---
 def ask_agent_radio(region, instructions_profil, nom_profil):
     # A. Recherche Web
     status_container = st.empty()
     region_clean = region.split(" ")[1] if " " in region else region
     
-    # Mots-clés contextuels
     if "MERIEM" in nom_profil:
-        keywords = "investigation corruption human rights geopolitics independent news"
+        keywords = "investigation corruption human rights geopolitics analysis"
     else:
-        keywords = "market trends venture capital startups tech finance news"
+        keywords = "market trends venture capital startups tech finance data"
 
-    with status_container.status(f"📡 Recherche pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
+    with status_container.status(f"📡 Analyse pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
         try:
-            search = TavilySearchResults(tavily_api_key=api_key_tavily, k=5)
-            query = f"top news {region_clean} {keywords} today latest details"
+            # k=7 pour un bon équilibre rapidité/densité
+            search = TavilySearchResults(tavily_api_key=api_key_tavily, k=7)
+            query = f"top news {region_clean} {keywords} today detailed analysis"
             results = search.invoke(query)
-            context_web = f"\n[INFOS WEB] :\n{results}\n"
-            s.update(label="✅ Infos trouvées !", state="complete", expanded=False)
+            context_web = f"\n[DATA] :\n{results}\n"
+            s.update(label="✅ Données récupérées !", state="complete", expanded=False)
         except:
             s.update(label="❌ Erreur web", state="error")
 
@@ -83,112 +110,87 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
-        CONTEXTE : Tu es un assistant vocal qui parle à son utilisateur.
+        CONTEXTE : Tu es un assistant vocal.
         ZONE : {region}
+        PROFIL : {instructions_profil}
+        DONNÉES : {context_web}
         
-        TA MISSION ET TON UTILISATEUR : 
-        {instructions_profil}
-        
-        LES INFOS DU JOUR : 
-        {context_web}
-        
-        CONSIGNE TECHNIQUE : Rédige uniquement le texte parlé. Utilise la ponctuation pour rendre la lecture fluide.
+        CONSIGNE DE RÉDACTION :
+        - Rédige un texte DENSE (environ 600-800 mots).
+        - Style RADIO : Phrases courtes. Ponctuation forte.
+        - Pas de titres, pas de gras. Juste le texte à lire.
         """
         response = model.generate_content(prompt)
         text_script = response.text
     except Exception as e:
         return f"Erreur IA : {e}", None
 
-    # C. Audio
+    # C. Audio via Edge TTS
     try:
-        tts = gTTS(text=text_script, lang='fr', slow=False)
-        audio_bytes = io.BytesIO()
-        tts.write_to_fp(audio_bytes)
-        audio_bytes.seek(0)
+        audio_bytes = get_audio(text_script, nom_profil)
         return text_script, audio_bytes
     except Exception as e:
         return text_script, None
 
-# --- 6. NAVIGATION ---
-if "step" not in st.session_state:
-    st.session_state.step = 1 
-if "selected_profile" not in st.session_state:
-    st.session_state.selected_profile = None
-if "selected_region" not in st.session_state:
-    st.session_state.selected_region = None
-if "result_text" not in st.session_state:
-    st.session_state.result_text = None
-if "result_audio" not in st.session_state:
-    st.session_state.result_audio = None
-
 # --- 7. INTERFACE ---
+# Gestion état
+if "step" not in st.session_state: st.session_state.step = 1 
+if "selected_profile" not in st.session_state: st.session_state.selected_profile = None
+if "selected_region" not in st.session_state: st.session_state.selected_region = None
+if "result_text" not in st.session_state: st.session_state.result_text = None
+if "result_audio" not in st.session_state: st.session_state.result_audio = None
+
 st.title("🎧 Mon Assistant Actu")
 
-# BOUTON RETOUR (Toujours visible si étape > 1)
+# Retour
 if st.session_state.step > 1:
-    if st.button("⬅️ Retour au début", key="btn_retour"):
+    if st.button("⬅️ Retour", key="btn_ret"):
         st.session_state.step = 1
         st.session_state.result_text = None
         st.session_state.result_audio = None
         st.rerun()
 
-# ÉTAPE 1 : IDENTIFICATION
+# ÉTAPE 1
 if st.session_state.step == 1:
     st.subheader("Qui êtes-vous ?")
-    
     keys = list(PROFILS.keys())
-    # Colonnes dynamiques
     cols = st.columns(len(keys))
-    
     for i, key in enumerate(keys):
         with cols[i]:
-            # Clé unique indispensable pour éviter les bugs d'affichage
-            if st.button(key, use_container_width=True, key=f"profil_{i}"):
+            if st.button(key, use_container_width=True, key=f"p_{i}"):
                 st.session_state.selected_profile = key
                 st.session_state.step = 2
                 st.rerun()
 
-# ÉTAPE 2 : ZONE D'INTÉRÊT
+# ÉTAPE 2
 elif st.session_state.step == 2:
-    # Récupération sécurisée du prénom
-    try:
-        prenom_user = st.session_state.selected_profile.split(' ')[1]
-    except:
-        prenom_user = "Utilisateur"
-
-    st.subheader(f"Bonjour {prenom_user}, quelle zone t'intéresse ?")
-    
-    # Affichage des régions
-    cols_geo = st.columns(2)
-    for i, region in enumerate(REGIONS):
-        # On alterne les colonnes gauche/droite
-        col_actuelle = cols_geo[i % 2]
-        
-        with col_actuelle:
-            # Clé unique "geo_{i}" pour forcer l'affichage
-            if st.button(region, use_container_width=True, key=f"geo_{i}"):
-                st.session_state.selected_region = region
+    try: prenom = st.session_state.selected_profile.split(' ')[1]
+    except: prenom = "User"
+    st.subheader(f"Bonjour {prenom}, quelle zone ?")
+    cols = st.columns(2)
+    for i, r in enumerate(REGIONS):
+        with cols[i%2]:
+            if st.button(r, use_container_width=True, key=f"r_{i}"):
+                st.session_state.selected_region = r
                 st.session_state.step = 3
                 st.rerun()
 
-# ÉTAPE 3 : BRIEFING
+# ÉTAPE 3
 elif st.session_state.step == 3:
-    st.subheader("🎙️ Briefing en cours...")
+    st.subheader("🎙️ Production du rapport...")
     
     if st.session_state.result_text is None:
-        with st.spinner("Je compile tes informations..."):
-            profil_blob = PROFILS[st.session_state.selected_profile]
-            region_blob = st.session_state.selected_region
-            
-            texte, audio = ask_agent_radio(region_blob, profil_blob, st.session_state.selected_profile)
-            
-            st.session_state.result_text = texte
-            st.session_state.result_audio = audio
+        with st.spinner("Analyse des sources et synthèse vocale haute définition..."):
+            p_blob = PROFILS[st.session_state.selected_profile]
+            r_blob = st.session_state.selected_region
+            txt, aud = ask_agent_radio(r_blob, p_blob, st.session_state.selected_profile)
+            st.session_state.result_text = txt
+            st.session_state.result_audio = aud
             st.rerun()
-    
+            
     if st.session_state.result_audio:
         st.audio(st.session_state.result_audio, format='audio/mp3', start_time=0)
-        st.success("Briefing prêt.")
-    
-    with st.expander("📄 Lire le script"):
+        st.success("Lecture prête.")
+        
+    with st.expander("📄 Script complet"):
         st.write(st.session_state.result_text)
