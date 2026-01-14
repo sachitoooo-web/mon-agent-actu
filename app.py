@@ -7,7 +7,7 @@ import io
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Mon Assistant Actu", page_icon="🎧")
 
-# --- 2. DÉFINITION DES PROFILS (Auditeurs) ---
+# --- 2. DÉFINITION DES PROFILS ---
 PROFILS = {
     "🕵️‍♀️ MERIEM (Investigation)": """
         CONTEXTE : Tu es l'assistant personnel d'intelligence économique de Meriem.
@@ -21,7 +21,7 @@ PROFILS = {
         3. LE POINT DE VUE : Synthétise un angle critique sur l'actu majeure.
         4. CONCLUSION : "Voilà pour l'essentiel, Meriem. Bonne journée."
         
-        TON : Calme, posé, très intellectuel et précis. Tu t'adresses directement à elle ("tu" ou "vous" selon ta préférence, reste cohérent).
+        TON : Calme, posé, très intellectuel et précis. Tu t'adresses directement à elle.
     """,
     
     "🚀 SACHA (Business/VC)": """
@@ -74,6 +74,7 @@ def ask_agent_radio(region, instructions_profil, nom_profil):
     with status_container.status(f"📡 Recherche pour {nom_profil.split(' ')[1]} ({region})...", expanded=True) as s:
         try:
             search = TavilySearchResults(tavily_api_key=api_key_tavily, k=5)
+            # Ajout de "today" pour forcer l'actu du jour
             query = f"top news {region_clean} {keywords} today latest details"
             results = search.invoke(query)
             context_web = f"\n[INFOS WEB] :\n{results}\n"
@@ -134,13 +135,22 @@ if st.session_state.step > 1:
         st.session_state.result_audio = None
         st.rerun()
 
-# ÉTAPE 1 : IDENTIFICATION
+# ÉTAPE 1 : IDENTIFICATION (Correction ici pour afficher TOUS les profils)
 if st.session_state.step == 1:
     st.subheader("Qui êtes-vous ?")
-    col1, col2 = st.columns(2)
+    
+    # On récupère les clés du dictionnaire
     keys = list(PROFILS.keys())
     
-    with col1:
-        if st.button(keys[0], use_container_width=True):
-            st.session_state.selected_profile = keys[0]
-            st
+    # On crée dynamiquement les colonnes selon le nombre de profils
+    cols = st.columns(len(keys))
+    
+    for i, key in enumerate(keys):
+        with cols[i]:
+            # On affiche le bouton qui prend toute la largeur de sa colonne
+            if st.button(key, use_container_width=True):
+                st.session_state.selected_profile = key
+                st.session_state.step = 2
+                st.rerun()
+
+# ÉTAPE 2 : ZONE D'INTÉR
