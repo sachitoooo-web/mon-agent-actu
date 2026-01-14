@@ -124,4 +124,77 @@ if st.session_state.current_profile is None:
     
     # Bouton Meriem
     with col1:
-        if st.button(keys
+        if st.button(keys[0], use_container_width=True):
+            st.session_state.current_profile = keys[0]
+            st.session_state.auto_start = True
+            st.rerun()
+
+    # Bouton Sacha
+    with col2:
+        if st.button(keys[1], use_container_width=True):
+            st.session_state.current_profile = keys[1]
+            st.session_state.auto_start = True
+            st.rerun()
+            
+    st.stop()
+
+# --- 7. INTERFACE CHAT ---
+profil_nom = st.session_state.current_profile
+profil_regles = PROFILS[profil_nom]
+
+with st.sidebar:
+    st.title(f"Mode : {profil_nom.split(' ')[1]}")
+    if st.button("⬅️ Changer de profil"):
+        st.session_state.current_profile = None
+        st.session_state.messages = []
+        st.session_state.auto_start = False
+        st.rerun()
+
+st.title(f"Actualité du jour ({profil_nom.split(' ')[1]})")
+
+# --- 8. DÉCLENCHEUR AUTOMATIQUE (CORRIGÉ) ---
+if st.session_state.auto_start:
+    with st.spinner("🤖 L'IA analyse la presse mondiale... (ça peut prendre 10s)"):
+        # Définition du sujet
+        if "MERIEM" in profil_nom:
+            sujet = "actualités internationales géopolitique investigation droits humains dernières 24h"
+        else:
+            sujet = "tech business finance startups market news last 24h"
+
+        prompt_auto = f"Fais-moi ta revue de presse quotidienne basée sur les infos des dernières 24h. ({sujet})"
+        
+        # Ajout message utilisateur (marqué comme 'init' pour le masquage)
+        st.session_state.messages.append({"role": "user", "content": prompt_auto, "type": "init"})
+        
+        # Appel IA
+        reponse = ask_agent(prompt_auto, profil_regles, profil_nom)
+        
+        # Ajout réponse IA
+        st.session_state.messages.append({"role": "assistant", "content": reponse})
+        
+        # Fin du mode auto
+        st.session_state.auto_start = False
+        st.rerun()
+
+# --- 9. AFFICHAGE DES MESSAGES (CORRIGÉ) ---
+for msg in st.session_state.messages:
+    # Si c'est le message technique de lancement, on affiche un texte joli
+    if msg.get("type") == "init":
+        with st.chat_message("user"):
+            st.write("🗓️ *Commande : Revue de presse quotidienne*")
+    else:
+        # Messages normaux
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+# --- 10. ZONE DE CHAT ---
+if prompt := st.chat_input("Approfondir un point..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        reponse = ask_agent(prompt, profil_regles, profil_nom)
+        st.markdown(reponse)
+    
+    st.session_state.messages.append({"role": "assistant", "content": reponse})
