@@ -66,9 +66,9 @@ async def generate_audio_edge(text, profil_nom):
     
     # ON GARDE LA VITESSE COMME MARQUEUR DE PERSONNALITÉ
     if "SACHA" in profil_nom:
-        rate = "+40%"  # Sacha = Très rapide
+        rate = "+20%"  # Sacha = Très rapide
     else:
-        rate = "+25%"  # Meriem = Rapide (mais moins que Sacha)
+        rate = "+20%"  # Meriem = Rapide (mais moins que Sacha)
 
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     
